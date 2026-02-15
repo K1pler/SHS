@@ -7,6 +7,7 @@ type QueueItem = {
   songName: string;
   artist: string;
   createdAt: string;
+  coverUrl?: string;
 };
 
 export default function AdminPage() {
@@ -132,6 +133,11 @@ export default function AdminPage() {
             {queue.map((item, i) => (
               <li key={item.id} style={styles.listItem}>
                 <span style={styles.index}>{i + 1}.</span>
+                {item.coverUrl ? (
+                  <img src={item.coverUrl} alt="" style={styles.queueCover} />
+                ) : (
+                  <div style={styles.queueCoverPlaceholder} />
+                )}
                 <span style={styles.song}>
                   {item.songName} — {item.artist}
                 </span>
@@ -218,6 +224,18 @@ const styles: Record<string, React.CSSProperties> = {
   index: {
     color: "var(--muted)",
     minWidth: "1.5rem",
+  },
+  queueCover: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    objectFit: "cover",
+  },
+  queueCoverPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    background: "var(--border)",
   },
   song: {
     flex: 1,
