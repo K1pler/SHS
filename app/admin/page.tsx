@@ -319,6 +319,7 @@ export default function AdminPage() {
             ))}
           </ul>
         )}
+        </section>
 
         <p style={styles.footer}>
           <a href="/">Volver a la cola</a>
