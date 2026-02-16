@@ -233,6 +233,26 @@ export default function HomePage() {
               {message.text}
             </p>
           )}
+
+          {queue.length > 0 && (
+            <section style={styles.lyricsSection}>
+              <h3 style={styles.h3}>Letra de la primera canción</h3>
+              {(() => {
+                const firstSong = queue.find((q) => q.orderNumber === 1);
+                if (!firstSong) {
+                  return <p style={styles.muted}>No hay primera canción.</p>;
+                }
+                if (!firstSong.lyrics) {
+                  return <p style={styles.muted}>Cargando letra...</p>;
+                }
+                return (
+                  <div style={styles.lyricsText}>
+                    {firstSong.lyrics}
+                  </div>
+                );
+              })()}
+            </section>
+          )}
         </div>
       </div>
 
@@ -469,5 +489,22 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
     color: "var(--text)",
     fontStyle: "italic",
+  },
+  lyricsSection: {
+    marginTop: "2rem",
+    paddingTop: "1.5rem",
+    borderTop: "1px solid var(--border)",
+  },
+  lyricsText: {
+    fontSize: "0.85rem",
+    lineHeight: 1.8,
+    color: "var(--text)",
+    whiteSpace: "pre-wrap",
+    maxHeight: "300px",
+    overflowY: "auto",
+    padding: "0.75rem",
+    borderRadius: "6px",
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
   },
 };
