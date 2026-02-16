@@ -4,6 +4,7 @@ import { getClientIp } from "@/lib/get-client-ip";
 import { checkRateLimit, recordRateLimit } from "@/lib/rate-limit";
 import { getLyrics } from "@/lib/lyrics-ovh";
 import { generateFunnySummary } from "@/lib/groq-client";
+import { isAdminRequest } from "@/lib/admin-auth";
 
 const QUEUE_COLLECTION = "queue";
 const ITUNES_SEARCH = "https://itunes.apple.com/search";
@@ -118,15 +119,20 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const ip = await getClientIp();
-    const { allowed, waitMinutes } = await checkRateLimit(ip);
-    if (!allowed) {
-      return NextResponse.json(
-        {
-          error: "Solo puedes añadir una canción cada 10 minutos",
-          waitMinutes,
-        },
-        { status: 429 }
-      );
+    const isAdmin = await isAdminRequest();
+    
+    // Solo aplicar rate limit si NO es admin
+    if (!isAdmin) {
+      const { allowed, waitMinutes } = await checkRateLimit(ip);
+      if (!allowed) {
+        return NextResponse.json(
+          {
+            error: "Solo puedes añadir una canción cada 10 minutos",
+            waitMinutes,
+          },
+          { status: 429 }
+        );
+      }
     }
 
     const contentLength = request.headers.get("content-length");
@@ -174,7 +180,10 @@ export async function POST(request: NextRequest) {
     if (verified.coverUrl) docData.coverUrl = verified.coverUrl;
     const docRef = await db.collection(QUEUE_COLLECTION).add(docData);
 
-    await recordRateLimit(ip);
+    // Solo registrar rate limit si NO es admin
+    if (!isAdmin) {
+      await recordRateLimit(ip);
+    }
 
     // Obtener letra de forma asíncrona (no bloquear respuesta)
     (async () => {

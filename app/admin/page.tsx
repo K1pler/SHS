@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+
+type SearchResult = {
+  trackName: string;
+  artistName: string;
+  coverUrl: string;
+};
 
 type QueueItem = {
   id: string;
@@ -18,6 +24,14 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [selectedTrack, setSelectedTrack] = useState<SearchResult | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const checkAdmin = useCallback(async () => {
     const res = await fetch("/api/admin/auth");
@@ -79,6 +93,91 @@ export default function AdminPage() {
     }
   }
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      setSuggestionsOpen(false);
+      return () => {};
+    }
+    const timeoutId = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSuggestions(Array.isArray(data) ? data : []);
+          setSuggestionsOpen(true);
+        }
+      } catch {
+        setSuggestions([]);
+      }
+    }, 300);
+    debounceRef.current = timeoutId;
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [searchQuery, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setSuggestionsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isAdmin]);
+
+  function handleSelectSuggestion(track: SearchResult) {
+    setSelectedTrack(track);
+    setSearchQuery("");
+    setSuggestions([]);
+    setSuggestionsOpen(false);
+  }
+
+  function clearSelection() {
+    setSelectedTrack(null);
+  }
+
+  async function handleAddSong(e: React.FormEvent) {
+    e.preventDefault();
+    setMessage(null);
+    if (!selectedTrack) {
+      setMessage({ type: "error", text: "Busca y elige una canción de la lista." });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/songs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          songName: selectedTrack.trackName,
+          artist: selectedTrack.artistName,
+          coverUrl: selectedTrack.coverUrl,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedTrack(null);
+        setMessage({ type: "ok", text: data.message ?? "Canción añadida." });
+        fetchQueue();
+      } else {
+        setMessage({
+          type: "error",
+          text: data.error ?? "Error al añadir.",
+        });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Error de conexión." });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (isAdmin === null) {
     return (
       <main style={styles.main}>
@@ -123,9 +222,76 @@ export default function AdminPage() {
     <main style={styles.main}>
       <div style={styles.container}>
         <h1 style={styles.h1}>Panel admin</h1>
-        <p style={styles.subtitle}>Quita canciones de la cola cuando las hayas puesto.</p>
+        <p style={styles.subtitle}>Añade canciones o quita de la cola.</p>
 
-        {loading ? (
+        <section style={styles.addSection}>
+          <h2 style={styles.h2}>Añadir canción</h2>
+          <form onSubmit={handleAddSong} style={styles.form}>
+            {!selectedTrack ? (
+              <div style={styles.searchWrap} ref={wrapperRef}>
+                <input
+                  type="text"
+                  placeholder="Buscar canción o artista..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  disabled={submitting}
+                  style={styles.input}
+                  autoComplete="off"
+                />
+                {suggestionsOpen && suggestions.length > 0 && (
+                  <ul style={styles.suggestionsList}>
+                    {suggestions.map((s, i) => (
+                      <li
+                        key={`${s.trackName}-${s.artistName}-${i}`}
+                        style={styles.suggestionItem}
+                        onMouseDown={() => handleSelectSuggestion(s)}
+                      >
+                        <img src={s.coverUrl} alt="" style={styles.suggestionCover} />
+                        <div>
+                          <div style={styles.suggestionTrack}>{s.trackName}</div>
+                          <div style={styles.suggestionArtist}>{s.artistName}</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <div style={styles.selectedWrap}>
+                <img src={selectedTrack.coverUrl} alt="" style={styles.selectedCover} />
+                <div style={styles.selectedText}>
+                  <strong>{selectedTrack.trackName}</strong>
+                  <span style={styles.selectedArtist}> — {selectedTrack.artistName}</span>
+                </div>
+                <button type="button" onClick={clearSelection} style={styles.changeBtn}>
+                  Cambiar
+                </button>
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={submitting || !selectedTrack}
+              style={styles.button}
+            >
+              {submitting ? "Añadiendo…" : "Añadir a la cola"}
+            </button>
+          </form>
+
+          {message && (
+            <p
+              style={{
+                ...styles.message,
+                color: message.type === "ok" ? "#22c55e" : "var(--danger)",
+              }}
+            >
+              {message.text}
+            </p>
+          )}
+        </section>
+
+        <section style={styles.queueSection}>
+          <h2 style={styles.h2}>Cola</h2>
+          {loading ? (
           <p style={styles.muted}>Cargando cola…</p>
         ) : queue.length === 0 ? (
           <p style={styles.muted}>No hay canciones en la cola.</p>
@@ -181,11 +347,97 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "0.9rem",
     marginBottom: "1.5rem",
   },
+  addSection: {
+    marginBottom: "2rem",
+    paddingBottom: "1.5rem",
+    borderBottom: "1px solid var(--border)",
+  },
+  queueSection: {
+    marginTop: "1rem",
+  },
+  h2: {
+    fontSize: "1.1rem",
+    marginBottom: "0.75rem",
+  },
   form: {
     display: "flex",
     flexDirection: "column",
     gap: "0.75rem",
     marginBottom: "1rem",
+  },
+  searchWrap: {
+    position: "relative",
+  },
+  suggestionsList: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    margin: 0,
+    padding: "0.25rem 0",
+    listStyle: "none",
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
+    borderRadius: "8px",
+    marginTop: "4px",
+    maxHeight: "280px",
+    overflowY: "auto",
+    zIndex: 10,
+  },
+  suggestionItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    padding: "0.5rem 0.75rem",
+    cursor: "pointer",
+  },
+  suggestionCover: {
+    width: 40,
+    height: 40,
+    borderRadius: 4,
+    objectFit: "cover",
+  },
+  suggestionTrack: {
+    fontWeight: 600,
+    fontSize: "0.9rem",
+  },
+  suggestionArtist: {
+    fontSize: "0.8rem",
+    color: "var(--muted)",
+  },
+  selectedWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    padding: "0.6rem",
+    borderRadius: "8px",
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+  },
+  selectedCover: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    objectFit: "cover",
+  },
+  selectedText: {
+    flex: 1,
+    fontSize: "0.95rem",
+  },
+  selectedArtist: {
+    color: "var(--muted)",
+  },
+  changeBtn: {
+    padding: "0.35rem 0.6rem",
+    fontSize: "0.8rem",
+    borderRadius: "6px",
+    border: "1px solid var(--border)",
+    background: "transparent",
+    color: "var(--text)",
+  },
+  message: {
+    fontSize: "0.9rem",
+    marginTop: "0.5rem",
   },
   input: {
     padding: "0.6rem 0.75rem",
