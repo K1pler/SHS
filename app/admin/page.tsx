@@ -7,6 +7,7 @@ type QueueItem = {
   songName: string;
   artist: string;
   createdAt: string;
+  orderNumber?: number;
   coverUrl?: string;
 };
 
@@ -130,9 +131,9 @@ export default function AdminPage() {
           <p style={styles.muted}>No hay canciones en la cola.</p>
         ) : (
           <ul style={styles.list}>
-            {queue.map((item, i) => (
+            {queue.map((item) => (
               <li key={item.id} style={styles.listItem}>
-                <span style={styles.index}>{i + 1}.</span>
+                <span style={styles.index}>{item.orderNumber ?? "?"}.</span>
                 {item.coverUrl ? (
                   <img src={item.coverUrl} alt="" style={styles.queueCover} />
                 ) : (

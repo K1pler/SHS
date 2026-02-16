@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase-admin";
 import { getClientIp } from "@/lib/get-client-ip";
 import { checkRateLimit, recordRateLimit } from "@/lib/rate-limit";
+import { getLyrics } from "@/lib/lyrics-ovh";
+import { generateFunnySummary } from "@/lib/groq-client";
 
 const QUEUE_COLLECTION = "queue";
 const ITUNES_SEARCH = "https://itunes.apple.com/search";
@@ -71,6 +73,9 @@ export type QueueItem = {
   songName: string;
   artist: string;
   createdAt: string;
+  orderNumber?: number;
+  lyrics?: string;
+  funnySummary?: string;
   coverUrl?: string;
   ip?: string;
 };
@@ -81,7 +86,7 @@ export async function GET() {
     // Limitar resultados para evitar respuestas enormes
     const snapshot = await db
       .collection(QUEUE_COLLECTION)
-      .orderBy("createdAt", "asc")
+      .orderBy("orderNumber", "asc")
       .limit(500)
       .get();
 
@@ -92,8 +97,11 @@ export async function GET() {
         songName: d.songName ?? "",
         artist: d.artist ?? "",
         createdAt: d.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
-        coverUrl: d.coverUrl,
-        ip: d.ip,
+        orderNumber: d.orderNumber as number | undefined,
+        lyrics: d.lyrics as string | undefined,
+        funnySummary: d.funnySummary as string | undefined,
+        coverUrl: d.coverUrl as string | undefined,
+        ip: d.ip as string | undefined,
       };
     });
 
@@ -150,16 +158,54 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getAdminFirestore();
+    
+    // Obtener orderNumber siguiente
+    const countSnapshot = await db.collection(QUEUE_COLLECTION).count().get();
+    const currentCount = countSnapshot.data().count ?? 0;
+    const orderNumber = currentCount + 1;
+
     const docData: Record<string, unknown> = {
       songName: verified.trackName,
       artist: verified.artistName,
       createdAt: new Date(),
+      orderNumber,
       ip,
     };
     if (verified.coverUrl) docData.coverUrl = verified.coverUrl;
     const docRef = await db.collection(QUEUE_COLLECTION).add(docData);
 
     await recordRateLimit(ip);
+
+    // Obtener letra de forma asíncrona (no bloquear respuesta)
+    (async () => {
+      try {
+        const lyrics = await getLyrics(verified.artistName, verified.trackName);
+        if (lyrics) {
+          await docRef.update({ lyrics });
+          
+          // Si es la primera canción, generar resumen jocoso
+          if (orderNumber === 1) {
+            try {
+              const summary = await generateFunnySummary(lyrics);
+              if (summary) {
+                await docRef.update({
+                  funnySummary: summary,
+                  summaryGeneratedAt: new Date(),
+                });
+                // Actualizar summaryGeneration/current
+                await db.collection("summaryGeneration").doc("current").set({
+                  firstSongId: docRef.id,
+                }, { merge: true });
+              }
+            } catch (e) {
+              console.error("Error generando resumen para primera canción:", e);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error obteniendo letra:", e);
+      }
+    })();
 
     return NextResponse.json({
       id: docRef.id,
