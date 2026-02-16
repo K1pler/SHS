@@ -1,28 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminPassword, isAdminRequest, setAdminCookie } from "@/lib/admin-auth";
-import { getClientIp } from "@/lib/get-client-ip";
+import { getOrCreateClientId } from "@/lib/client-id";
 import { checkGenericRateLimit, recordGenericRateLimit } from "@/lib/rate-limit-generic";
 
 const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
 const ADMIN_LOGIN_WINDOW_MINUTES = 15;
 
 export async function GET() {
-  const isAdmin = await isAdminRequest();
-  return NextResponse.json({ admin: isAdmin });
+  try {
+    const isAdmin = await isAdminRequest();
+    return NextResponse.json({ admin: isAdmin });
+  } catch {
+    return NextResponse.json({ admin: false });
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = await getClientIp();
+    const clientId = await getOrCreateClientId();
     const { allowed, retryAfterSeconds } = await checkGenericRateLimit(
-      ip,
+      clientId,
       "admin_login",
       ADMIN_LOGIN_MAX_ATTEMPTS,
       ADMIN_LOGIN_WINDOW_MINUTES
     );
     if (!allowed) {
       return NextResponse.json(
-        { error: "Demasiados intentos. Espera unos minutos." },
+        { error: "Demasiados intentos." },
         { status: 429, headers: { "Retry-After": String(retryAfterSeconds ?? 60) } }
       );
     }
@@ -32,9 +36,9 @@ export async function POST(request: NextRequest) {
 
     const expected = getAdminPassword();
     if (!password || password !== expected) {
-      await recordGenericRateLimit(ip, "admin_login", ADMIN_LOGIN_WINDOW_MINUTES);
+      await recordGenericRateLimit(clientId, "admin_login", ADMIN_LOGIN_WINDOW_MINUTES);
       return NextResponse.json(
-        { error: "Contraseña incorrecta" },
+        { error: "Credenciales incorrectas." },
         { status: 401 }
       );
     }
@@ -45,7 +49,7 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     console.error("POST /api/admin/auth", e);
     return NextResponse.json(
-      { error: "Error en la autenticación" },
+      { error: "Algo ha fallado." },
       { status: 500 }
     );
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useEffect, useCallback, useRef } from "react";
 
 type SearchResult = {
@@ -72,15 +73,15 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-      const data = await res.json();
+      await res.json();
       if (res.ok) {
         setIsAdmin(true);
         setPassword("");
       } else {
-        setAuthError(data.error ?? "Error al iniciar sesión");
+        setAuthError(res.status === 429 ? "Demasiados intentos." : "Credenciales incorrectas.");
       }
     } catch {
-      setAuthError("Error de conexión");
+      setAuthError("Error de conexión.");
     } finally {
       setAuthLoading(false);
     }
@@ -160,16 +161,19 @@ export default function AdminPage() {
           coverUrl: selectedTrack.coverUrl,
         }),
       });
-      const data = await res.json();
+      await res.json();
       if (res.ok) {
         setSelectedTrack(null);
-        setMessage({ type: "ok", text: data.message ?? "Canción añadida." });
+        setMessage({ type: "ok", text: "Canción añadida." });
         fetchQueue();
       } else {
-        setMessage({
-          type: "error",
-          text: data.error ?? "Error al añadir.",
-        });
+        const msg =
+          res.status === 429
+            ? "Espera un poco."
+            : res.status >= 500
+              ? "Algo ha fallado. Inténtalo más tarde."
+              : "No se ha podido añadir.";
+        setMessage({ type: "error", text: msg });
       }
     } catch {
       setMessage({ type: "error", text: "Error de conexión." });
@@ -246,7 +250,7 @@ export default function AdminPage() {
                         style={styles.suggestionItem}
                         onMouseDown={() => handleSelectSuggestion(s)}
                       >
-                        <img src={s.coverUrl} alt="" style={styles.suggestionCover} />
+                        <Image src={s.coverUrl} alt="" width={40} height={40} style={styles.suggestionCover} />
                         <div>
                           <div style={styles.suggestionTrack}>{s.trackName}</div>
                           <div style={styles.suggestionArtist}>{s.artistName}</div>
@@ -258,7 +262,7 @@ export default function AdminPage() {
               </div>
             ) : (
               <div style={styles.selectedWrap}>
-                <img src={selectedTrack.coverUrl} alt="" style={styles.selectedCover} />
+                <Image src={selectedTrack.coverUrl} alt="" width={48} height={48} style={styles.selectedCover} />
                 <div style={styles.selectedText}>
                   <strong>{selectedTrack.trackName}</strong>
                   <span style={styles.selectedArtist}> — {selectedTrack.artistName}</span>
@@ -301,7 +305,7 @@ export default function AdminPage() {
               <li key={item.id} style={styles.listItem}>
                 <span style={styles.index}>{item.orderNumber ?? "?"}.</span>
                 {item.coverUrl ? (
-                  <img src={item.coverUrl} alt="" style={styles.queueCover} />
+                  <Image src={item.coverUrl} alt="" width={36} height={36} style={styles.queueCover} />
                 ) : (
                   <div style={styles.queueCoverPlaceholder} />
                 )}

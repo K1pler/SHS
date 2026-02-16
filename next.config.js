@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  productionBrowserSourceMaps: false,
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "cdn-images.dzcdn.net", pathname: "/**" },
+      { protocol: "https", hostname: "e-cdns-images.dzcdn.net", pathname: "/**" },
+    ],
+  },
   async headers() {
     return [
       {

@@ -2,10 +2,10 @@ import { getAdminFirestore } from "./firebase-admin";
 
 const RATE_LIMITS_COLLECTION = "rateLimitsGeneric";
 
-function hashIp(ip: string): string {
+function hashClientId(id: string): string {
   let h = 0;
-  for (let i = 0; i < ip.length; i++) {
-    const c = ip.charCodeAt(i);
+  for (let i = 0; i < id.length; i++) {
+    const c = id.charCodeAt(i);
     h = (h << 5) - h + c;
     h = h & h;
   }
@@ -13,17 +13,17 @@ function hashIp(ip: string): string {
 }
 
 /**
- * Rate limit: max N requests per windowMinutes per IP.
+ * Rate limit: max N requests per windowMinutes per clientId.
  * Returns { allowed: true } or { allowed: false, retryAfterSeconds }.
  */
 export async function checkGenericRateLimit(
-  ip: string,
+  clientId: string,
   kind: string,
   maxRequests: number,
   windowMinutes: number
 ): Promise<{ allowed: boolean; retryAfterSeconds?: number }> {
   const db = getAdminFirestore();
-  const id = `${kind}_${hashIp(ip)}`;
+  const id = `${kind}_${hashClientId(clientId)}`;
   const ref = db.collection(RATE_LIMITS_COLLECTION).doc(id);
   const doc = await ref.get();
   const now = new Date();
@@ -52,12 +52,12 @@ export async function checkGenericRateLimit(
 }
 
 export async function recordGenericRateLimit(
-  ip: string,
+  clientId: string,
   kind: string,
   windowMinutes: number
 ): Promise<void> {
   const db = getAdminFirestore();
-  const id = `${kind}_${hashIp(ip)}`;
+  const id = `${kind}_${hashClientId(clientId)}`;
   const ref = db.collection(RATE_LIMITS_COLLECTION).doc(id);
   const doc = await ref.get();
   const now = new Date();

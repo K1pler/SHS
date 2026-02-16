@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "migrate:remove-ip": "node --env-file=.env.local scripts/remove-ip-from-queue.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",

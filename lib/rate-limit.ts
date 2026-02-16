@@ -3,19 +3,19 @@ import { getAdminFirestore } from "./firebase-admin";
 const RATE_LIMIT_MINUTES = 10;
 const RATE_LIMITS_COLLECTION = "rateLimits";
 
-function hashIp(ip: string): string {
+function hashClientId(id: string): string {
   let h = 0;
-  for (let i = 0; i < ip.length; i++) {
-    const c = ip.charCodeAt(i);
+  for (let i = 0; i < id.length; i++) {
+    const c = id.charCodeAt(i);
     h = (h << 5) - h + c;
     h = h & h;
   }
   return Math.abs(h).toString(36).slice(0, 16);
 }
 
-export async function checkRateLimit(ip: string): Promise<{ allowed: boolean; waitMinutes?: number }> {
+export async function checkRateLimit(clientId: string): Promise<{ allowed: boolean; waitMinutes?: number }> {
   const db = getAdminFirestore();
-  const id = hashIp(ip);
+  const id = hashClientId(clientId);
   const ref = db.collection(RATE_LIMITS_COLLECTION).doc(id);
   const doc = await ref.get();
   const now = new Date();
@@ -36,11 +36,10 @@ export async function checkRateLimit(ip: string): Promise<{ allowed: boolean; wa
   return { allowed: false, waitMinutes };
 }
 
-export async function recordRateLimit(ip: string): Promise<void> {
+export async function recordRateLimit(clientId: string): Promise<void> {
   const db = getAdminFirestore();
-  const id = hashIp(ip);
+  const id = hashClientId(clientId);
   await db.collection(RATE_LIMITS_COLLECTION).doc(id).set({
     lastRequestAt: new Date(),
-    ip,
   }, { merge: true });
 }

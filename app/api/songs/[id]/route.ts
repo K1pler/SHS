@@ -11,19 +11,19 @@ export async function DELETE(
   try {
     const isAdmin = await isAdminRequest();
     if (!isAdmin) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
     }
 
     const { id } = await params;
     if (!id) {
-      return NextResponse.json({ error: "ID requerido" }, { status: 400 });
+      return NextResponse.json({ error: "Solicitud inválida." }, { status: 400 });
     }
 
     const db = getAdminFirestore();
     const ref = db.collection(QUEUE_COLLECTION).doc(id);
     const doc = await ref.get();
     if (!doc.exists) {
-      return NextResponse.json({ error: "Canción no encontrada" }, { status: 404 });
+      return NextResponse.json({ error: "No encontrado." }, { status: 404 });
     }
 
     await ref.delete();
@@ -32,7 +32,7 @@ export async function DELETE(
   } catch (e) {
     console.error("DELETE /api/songs/[id]", e);
     return NextResponse.json(
-      { error: "Error al eliminar la canción" },
+      { error: "Algo ha fallado." },
       { status: 500 }
     );
   }

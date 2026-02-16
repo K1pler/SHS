@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getClientIp } from "@/lib/get-client-ip";
+import { getOrCreateClientId } from "@/lib/client-id";
 import { checkGenericRateLimit, recordGenericRateLimit } from "@/lib/rate-limit-generic";
 
 const DEEZER_SEARCH = "https://api.deezer.com/search";
@@ -19,16 +19,16 @@ export type SearchResult = {
 };
 
 export async function GET(request: NextRequest) {
-  const ip = await getClientIp();
+  const clientId = await getOrCreateClientId();
   const { allowed, retryAfterSeconds } = await checkGenericRateLimit(
-    ip,
+    clientId,
     "search",
     SEARCH_MAX_REQUESTS,
     SEARCH_WINDOW_MINUTES
   );
   if (!allowed) {
     return NextResponse.json(
-      { error: "Demasiadas búsquedas. Espera un momento." },
+      { error: "Espera un momento." },
       { status: 429, headers: { "Retry-After": String(retryAfterSeconds ?? 60) } }
     );
   }
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json([]);
   }
 
-  await recordGenericRateLimit(ip, "search", SEARCH_WINDOW_MINUTES);
+  await recordGenericRateLimit(clientId, "search", SEARCH_WINDOW_MINUTES);
 
   try {
     const res = await fetch(

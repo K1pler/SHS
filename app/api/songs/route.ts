@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase-admin";
-import { getClientIp } from "@/lib/get-client-ip";
+import { getOrCreateClientId } from "@/lib/client-id";
 import { checkRateLimit, recordRateLimit } from "@/lib/rate-limit";
 import { isAdminRequest } from "@/lib/admin-auth";
 
@@ -75,7 +75,6 @@ export type QueueItem = {
   lyrics?: string;
   funnySummary?: string;
   coverUrl?: string;
-  ip?: string;
 };
 
 export async function GET() {
@@ -99,7 +98,7 @@ export async function GET() {
         lyrics: d.lyrics as string | undefined,
         funnySummary: d.funnySummary as string | undefined,
         coverUrl: d.coverUrl as string | undefined,
-        ip: d.ip as string | undefined,
+        // ip no se expone en la API pública por privacidad
       };
     });
 
@@ -107,7 +106,7 @@ export async function GET() {
   } catch (e) {
     console.error("GET /api/songs", e);
     return NextResponse.json(
-      { error: "Error al cargar la cola" },
+      { error: "Algo ha fallado. Inténtalo más tarde." },
       { status: 500 }
     );
   }
@@ -115,18 +114,15 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = await getClientIp();
+    const clientId = await getOrCreateClientId();
     const isAdmin = await isAdminRequest();
     
     // Solo aplicar rate limit si NO es admin
     if (!isAdmin) {
-      const { allowed, waitMinutes } = await checkRateLimit(ip);
+      const { allowed } = await checkRateLimit(clientId);
       if (!allowed) {
         return NextResponse.json(
-          {
-            error: "Solo puedes añadir una canción cada 10 minutos",
-            waitMinutes,
-          },
+          { error: "Espera un poco antes de añadir otra canción." },
           { status: 429 }
         );
       }
@@ -135,7 +131,7 @@ export async function POST(request: NextRequest) {
     const contentLength = request.headers.get("content-length");
     if (contentLength && parseInt(contentLength, 10) > MAX_BODY_LENGTH) {
       return NextResponse.json(
-        { error: "Cuerpo de la petición demasiado grande" },
+        { error: "Solicitud demasiado grande." },
         { status: 413 }
       );
     }
@@ -146,12 +142,11 @@ export async function POST(request: NextRequest) {
 
     if (!songName || !artist) {
       return NextResponse.json(
-        { error: "Faltan nombre de canción o artista" },
+        { error: "Datos inválidos." },
         { status: 400 }
       );
     }
 
-    // Solo aceptar canciones que existan en la API de Deezer (como las sugerencias de búsqueda)
     const verified = await verifySongWithDeezer(songName, artist);
     if (!verified) {
       return NextResponse.json(
@@ -172,26 +167,20 @@ export async function POST(request: NextRequest) {
       artist: verified.artistName,
       createdAt: new Date(),
       orderNumber,
-      ip,
     };
     if (verified.coverUrl) docData.coverUrl = verified.coverUrl;
     const docRef = await db.collection(QUEUE_COLLECTION).add(docData);
 
     // Solo registrar rate limit si NO es admin
     if (!isAdmin) {
-      await recordRateLimit(ip);
+      await recordRateLimit(clientId);
     }
 
-    return NextResponse.json({
-      id: docRef.id,
-      songName: verified.trackName,
-      artist: verified.artistName,
-      message: "Canción añadida a la cola",
-    });
+    return NextResponse.json({ success: true, message: "Canción añadida a la cola" });
   } catch (e) {
     console.error("POST /api/songs", e);
     return NextResponse.json(
-      { error: "Error al añadir la canción" },
+      { error: "Algo ha fallado. Inténtalo más tarde." },
       { status: 500 }
     );
   }
