@@ -31,6 +31,8 @@ export default function AdminPage() {
   const [selectedTrack, setSelectedTrack] = useState<SearchResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [pauseLoading, setPauseLoading] = useState(false);
+  const [pauseMessage, setPauseMessage] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -91,6 +93,25 @@ export default function AdminPage() {
     const res = await fetch(`/api/songs/${id}`, { method: "DELETE" });
     if (res.ok) {
       setQueue((q) => q.filter((s) => s.id !== id));
+    }
+  }
+
+  async function handlePauseProject() {
+    if (!window.confirm("¿Pausar el proyecto? La web no estará disponible hasta que lo reanudes desde el dashboard de Vercel.")) return;
+    setPauseMessage(null);
+    setPauseLoading(true);
+    try {
+      const res = await fetch("/api/admin/pause-project", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setPauseMessage("Proyecto pausado. La web dejará de estar disponible en breve.");
+      } else {
+        setPauseMessage(data.error ?? "No se pudo pausar.");
+      }
+    } catch {
+      setPauseMessage("Error de conexión.");
+    } finally {
+      setPauseLoading(false);
     }
   }
 
@@ -325,6 +346,21 @@ export default function AdminPage() {
         )}
         </section>
 
+        <section style={styles.pauseSection}>
+          <h2 style={styles.h2}>Proyecto</h2>
+          <button
+            type="button"
+            onClick={handlePauseProject}
+            disabled={pauseLoading}
+            style={{ ...styles.button, ...styles.pauseButton }}
+          >
+            {pauseLoading ? "Pausando…" : "Pausar proyecto (web no accesible)"}
+          </button>
+          {pauseMessage && (
+            <p style={styles.pauseMessage}>{pauseMessage}</p>
+          )}
+        </section>
+
         <p style={styles.footer}>
           <a href="/">Volver a la cola</a>
         </p>
@@ -359,6 +395,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   queueSection: {
     marginTop: "1rem",
+  },
+  pauseSection: {
+    marginTop: "2rem",
+    paddingTop: "1.5rem",
+    borderTop: "1px solid var(--border)",
+  },
+  pauseButton: {
+    backgroundColor: "var(--danger)",
+  },
+  pauseMessage: {
+    marginTop: "0.5rem",
+    fontSize: "0.9rem",
+    color: "var(--muted)",
   },
   h2: {
     fontSize: "1.1rem",
