@@ -7,54 +7,53 @@ import { generateFunnySummary } from "@/lib/groq-client";
 import { isAdminRequest } from "@/lib/admin-auth";
 
 const QUEUE_COLLECTION = "queue";
-const ITUNES_SEARCH = "https://itunes.apple.com/search";
+const DEEZER_SEARCH = "https://api.deezer.com/search";
 const MAX_SONG_NAME_LENGTH = 200;
 const MAX_ARTIST_LENGTH = 200;
 const MAX_COVER_URL_LENGTH = 2000;
 const MAX_BODY_LENGTH = 50 * 1024; // 50 KB
 
 const ALLOWED_COVER_HOSTS = [
-  "is1-ssl.mzstatic.com",
-  "is2-ssl.mzstatic.com",
-  "is3-ssl.mzstatic.com",
-  "is4-ssl.mzstatic.com",
-  "is5-ssl.mzstatic.com",
+  "cdn-images.dzcdn.net",
+  "e-cdns-images.dzcdn.net",
 ];
 
-type iTunesResult = {
-  trackName?: string;
-  artistName?: string;
-  artworkUrl100?: string;
+type DeezerTrack = {
+  title?: string;
+  artist?: { name?: string };
+  album?: { cover_medium?: string; cover_big?: string };
 };
 
-/** Verifica que la canción exista en iTunes y devuelve sus datos oficiales. */
-async function verifySongWithItunes(
+/** Verifica que la canción exista en Deezer y devuelve sus datos oficiales. */
+async function verifySongWithDeezer(
   songName: string,
   artist: string
 ): Promise<{ trackName: string; artistName: string; coverUrl?: string } | null> {
   const term = `${songName} ${artist}`.trim().slice(0, 100);
-  const params = new URLSearchParams({ term, media: "music", limit: "20" });
-  const res = await fetch(`${ITUNES_SEARCH}?${params.toString()}`, { next: { revalidate: 0 } });
-  const data = (await res.json()) as { results?: iTunesResult[] };
-  const results = data.results ?? [];
+  const res = await fetch(
+    `${DEEZER_SEARCH}?q=${encodeURIComponent(term)}&limit=20`,
+    { next: { revalidate: 0 } }
+  );
+  const data = (await res.json()) as { data?: DeezerTrack[] };
+  const results = data.data ?? [];
 
   const songLower = songName.trim().toLowerCase();
   const artistLower = artist.trim().toLowerCase();
 
   const match = results.find((r) => {
-    const t = (r.trackName ?? "").trim().toLowerCase();
-    const a = (r.artistName ?? "").trim().toLowerCase();
+    const t = (r.title ?? "").trim().toLowerCase();
+    const a = (r.artist?.name ?? "").trim().toLowerCase();
     return t === songLower && a === artistLower;
   });
 
-  if (!match || !match.trackName || !match.artistName) return null;
+  if (!match || !match.title || !match.artist?.name) return null;
 
   let coverUrl: string | undefined;
-  const url = match.artworkUrl100?.trim();
+  const url = (match.album?.cover_medium ?? match.album?.cover_big)?.trim();
   if (url && url.length <= MAX_COVER_URL_LENGTH) {
     try {
       const u = new URL(url);
-      if (ALLOWED_COVER_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith(".mzstatic.com"))) {
+      if (ALLOWED_COVER_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith(".dzcdn.net"))) {
         coverUrl = url;
       }
     } catch {
@@ -63,8 +62,8 @@ async function verifySongWithItunes(
   }
 
   return {
-    trackName: match.trackName.slice(0, MAX_SONG_NAME_LENGTH),
-    artistName: match.artistName.slice(0, MAX_ARTIST_LENGTH),
+    trackName: match.title.slice(0, MAX_SONG_NAME_LENGTH),
+    artistName: match.artist.name.slice(0, MAX_ARTIST_LENGTH),
     coverUrl,
   };
 }
@@ -154,8 +153,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Solo aceptar canciones que existan en la API de iTunes (como las sugerencias de búsqueda)
-    const verified = await verifySongWithItunes(songName, artist);
+    // Solo aceptar canciones que existan en la API de Deezer (como las sugerencias de búsqueda)
+    const verified = await verifySongWithDeezer(songName, artist);
     if (!verified) {
       return NextResponse.json(
         { error: "No se ha encontrado la canción." },
