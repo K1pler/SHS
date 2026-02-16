@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminFirestore } from "@/lib/firebase-admin";
 import { getClientIp } from "@/lib/get-client-ip";
 import { checkRateLimit, recordRateLimit } from "@/lib/rate-limit";
-import { getLyrics } from "@/lib/lyrics-ovh";
-import { generateFunnySummary } from "@/lib/groq-client";
 import { isAdminRequest } from "@/lib/admin-auth";
 
 const QUEUE_COLLECTION = "queue";
@@ -183,37 +181,6 @@ export async function POST(request: NextRequest) {
     if (!isAdmin) {
       await recordRateLimit(ip);
     }
-
-    // Obtener letra de forma asíncrona (no bloquear respuesta)
-    (async () => {
-      try {
-        const lyrics = await getLyrics(verified.artistName, verified.trackName);
-        if (lyrics) {
-          await docRef.update({ lyrics });
-          
-          // Si es la primera canción, generar resumen jocoso
-          if (orderNumber === 1) {
-            try {
-              const summary = await generateFunnySummary(lyrics);
-              if (summary) {
-                await docRef.update({
-                  funnySummary: summary,
-                  summaryGeneratedAt: new Date(),
-                });
-                // Actualizar summaryGeneration/current
-                await db.collection("summaryGeneration").doc("current").set({
-                  firstSongId: docRef.id,
-                }, { merge: true });
-              }
-            } catch (e) {
-              console.error("Error generando resumen para primera canción:", e);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Error obteniendo letra:", e);
-      }
-    })();
 
     return NextResponse.json({
       id: docRef.id,

@@ -14,8 +14,6 @@ type QueueItem = {
   artist: string;
   createdAt: string;
   orderNumber?: number;
-  lyrics?: string;
-  funnySummary?: string;
   coverUrl?: string;
 };
 
@@ -28,7 +26,6 @@ export default function HomePage() {
   const [selectedTrack, setSelectedTrack] = useState<SearchResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
-  const [generatingSummary, setGeneratingSummary] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -49,39 +46,6 @@ export default function HomePage() {
     const t = setInterval(fetchQueue, 10000);
     return () => clearInterval(t);
   }, [fetchQueue]);
-
-  // Polling para verificar y generar resumen si es necesario
-  useEffect(() => {
-    const checkAndGenerateSummary = async () => {
-      try {
-        const res = await fetch("/api/songs/check-summary");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.needsSummary && data.songId && !generatingSummary) {
-            setGeneratingSummary(true);
-            try {
-              const summaryRes = await fetch(`/api/songs/${data.songId}/summary`, {
-                method: "POST",
-              });
-              if (summaryRes.ok) {
-                fetchQueue();
-              }
-            } catch {
-              // Ignorar errores
-            } finally {
-              setGeneratingSummary(false);
-            }
-          }
-        }
-      } catch {
-        // Ignorar errores
-      }
-    };
-
-    checkAndGenerateSummary();
-    const t = setInterval(checkAndGenerateSummary, 8000);
-    return () => clearInterval(t);
-  }, [fetchQueue, generatingSummary]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -233,26 +197,6 @@ export default function HomePage() {
               {message.text}
             </p>
           )}
-
-          {queue.length > 0 && (
-            <section style={styles.lyricsSection}>
-              <h3 style={styles.h3}>Letra de la primera canción</h3>
-              {(() => {
-                const firstSong = queue.find((q) => q.orderNumber === 1);
-                if (!firstSong) {
-                  return <p style={styles.muted}>No hay primera canción.</p>;
-                }
-                if (!firstSong.lyrics) {
-                  return <p style={styles.muted}>Cargando letra...</p>;
-                }
-                return (
-                  <div style={styles.lyricsText}>
-                    {firstSong.lyrics}
-                  </div>
-                );
-              })()}
-            </section>
-          )}
         </div>
       </div>
 
@@ -279,25 +223,6 @@ export default function HomePage() {
                 </li>
               ))}
             </ul>
-          )}
-
-          {queue.length > 0 && (
-            <section style={styles.summarySection}>
-              <h3 style={styles.h3}>Resumen jocoso</h3>
-              {(() => {
-                const firstSong = queue.find((q) => q.orderNumber === 1);
-                if (!firstSong) {
-                  return <p style={styles.muted}>No hay primera canción.</p>;
-                }
-                if (generatingSummary) {
-                  return <p style={styles.muted}>Generando resumen...</p>;
-                }
-                if (firstSong.funnySummary) {
-                  return <p style={styles.summaryText}>{firstSong.funnySummary}</p>;
-                }
-                return <p style={styles.muted}>Sin resumen disponible.</p>;
-              })()}
-            </section>
           )}
         </section>
       </div>
@@ -473,38 +398,5 @@ const styles: Record<string, React.CSSProperties> = {
   },
   song: {
     flex: 1,
-  },
-  summarySection: {
-    marginTop: "2rem",
-    paddingTop: "1.5rem",
-    borderTop: "1px solid var(--border)",
-  },
-  h3: {
-    fontSize: "1rem",
-    marginBottom: "0.75rem",
-    color: "var(--text)",
-  },
-  summaryText: {
-    fontSize: "0.9rem",
-    lineHeight: 1.6,
-    color: "var(--text)",
-    fontStyle: "italic",
-  },
-  lyricsSection: {
-    marginTop: "2rem",
-    paddingTop: "1.5rem",
-    borderTop: "1px solid var(--border)",
-  },
-  lyricsText: {
-    fontSize: "0.85rem",
-    lineHeight: 1.8,
-    color: "var(--text)",
-    whiteSpace: "pre-wrap",
-    maxHeight: "300px",
-    overflowY: "auto",
-    padding: "0.75rem",
-    borderRadius: "6px",
-    background: "var(--surface)",
-    border: "1px solid var(--border)",
   },
 };
